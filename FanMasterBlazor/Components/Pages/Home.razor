@@ -1,0 +1,292 @@
+@page "/"
+@inject ConnectionState ConnectionState
+@inject NSNeedDecorationRepository Repository
+
+<PageTitle>NSNeedDecoration</PageTitle>
+
+@if (!ConnectionState.IsConnected)
+{
+    <h2>Inicio de sesión a Azure SQL</h2>
+    <EditForm Model="loginModel" OnValidSubmit="ConnectAsync" class="card p-3 shadow-sm">
+        <DataAnnotationsValidator />
+        <ValidationSummary />
+
+        <div class="mb-3">
+            <label class="form-label">Servidor</label>
+            <InputText class="form-control" @bind-Value="loginModel.Server" />
+        </div>
+        <div class="mb-3">
+            <label class="form-label">Base de datos</label>
+            <InputText class="form-control" @bind-Value="loginModel.Database" />
+        </div>
+        <div class="mb-3">
+            <label class="form-label">Usuario</label>
+            <InputText class="form-control" @bind-Value="loginModel.UserName" />
+        </div>
+        <div class="mb-3">
+            <label class="form-label">Contraseña</label>
+            <InputText class="form-control" @bind-Value="loginModel.Password" type="password" />
+        </div>
+
+        <button class="btn btn-primary" type="submit">Conectar</button>
+    </EditForm>
+
+    @if (!string.IsNullOrWhiteSpace(error))
+    {
+        <div class="alert alert-danger mt-3">@error</div>
+    }
+}
+else
+{
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h2>Mantenimiento NSNeedDecoration</h2>
+        <div>
+            <button class="btn btn-outline-secondary me-2" @onclick="NewRecord">Nuevo</button>
+            <button class="btn btn-outline-danger" @onclick="Disconnect">Salir</button>
+        </div>
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(error))
+    {
+        <div class="alert alert-danger">@error</div>
+    }
+
+    @if (isLoading)
+    {
+        <p>Cargando datos...</p>
+    }
+    else
+    {
+        <table class="table table-striped table-sm">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Año</th>
+                    <th>Mes</th>
+                    <th>Categoría</th>
+                    <th>Programa</th>
+                    <th>Producto</th>
+                    <th>Vendor</th>
+                    <th>Units</th>
+                    <th>SourceFile</th>
+                    <th>SourceDate</th>
+                    <th>LoadUTC</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var item in items)
+                {
+                    <tr>
+                        <td>@item.NSNeedDecorationID</td>
+                        <td>@item.ForecastYear</td>
+                        <td>@item.ForecastMonth</td>
+                        <td>@item.Category</td>
+                        <td>@item.Program</td>
+                        <td>@item.ProductType</td>
+                        <td>@item.VendorStream</td>
+                        <td>@item.Units</td>
+                        <td>@item.SourceFileName</td>
+                        <td>@item.SourceAsOfDate</td>
+                        <td>@item.LoadTimestampUTC.ToString("u")</td>
+                        <td>
+                            <button class="btn btn-sm btn-outline-primary me-1" @onclick="() => EditRecord(item)">Editar</button>
+                            <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteRecord(item.NSNeedDecorationID)">Eliminar</button>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+
+    @if (editing is not null)
+    {
+        <hr />
+        <h3>@(editing.NSNeedDecorationID == 0 ? "Nuevo registro" : $"Editar ID {editing.NSNeedDecorationID}")</h3>
+        <EditForm Model="editing" OnValidSubmit="SaveAsync">
+            <DataAnnotationsValidator />
+            <ValidationSummary />
+            <div class="row">
+                <div class="col-md-2 mb-3">
+                    <label class="form-label">Año</label>
+                    <InputNumber class="form-control" @bind-Value="editing.ForecastYear" />
+                </div>
+                <div class="col-md-2 mb-3">
+                    <label class="form-label">Mes</label>
+                    <InputNumber class="form-control" @bind-Value="editing.ForecastMonth" />
+                </div>
+                <div class="col-md-4 mb-3">
+                    <label class="form-label">Categoría</label>
+                    <InputText class="form-control" @bind-Value="editing.Category" />
+                </div>
+                <div class="col-md-4 mb-3">
+                    <label class="form-label">Programa</label>
+                    <InputText class="form-control" @bind-Value="editing.Program" />
+                </div>
+                <div class="col-md-4 mb-3">
+                    <label class="form-label">ProductType</label>
+                    <InputText class="form-control" @bind-Value="editing.ProductType" />
+                </div>
+                <div class="col-md-4 mb-3">
+                    <label class="form-label">VendorStream</label>
+                    <InputText class="form-control" @bind-Value="editing.VendorStream" />
+                </div>
+                <div class="col-md-2 mb-3">
+                    <label class="form-label">Units</label>
+                    <InputNumber class="form-control" @bind-Value="editing.Units" />
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label class="form-label">SourceFileName</label>
+                    <InputText class="form-control" @bind-Value="editing.SourceFileName" />
+                </div>
+                <div class="col-md-3 mb-3">
+                    <label class="form-label">SourceAsOfDate</label>
+                    <InputDate class="form-control" @bind-Value="editing.SourceAsOfDate" />
+                </div>
+            </div>
+            <button class="btn btn-success me-2" type="submit">Guardar</button>
+            <button class="btn btn-secondary" type="button" @onclick="CancelEdit">Cancelar</button>
+        </EditForm>
+    }
+}
+
+@code {
+    private readonly LoginModel loginModel = new();
+    private List<NSNeedDecorationRecord> items = [];
+    private NSNeedDecorationRecord? editing;
+    private bool isLoading;
+    private string? error;
+
+    private async Task ConnectAsync()
+    {
+        error = null;
+
+        ConnectionState.Server = loginModel.Server;
+        ConnectionState.Database = loginModel.Database;
+        ConnectionState.UserName = loginModel.UserName;
+        ConnectionState.Password = loginModel.Password;
+
+        try
+        {
+            await LoadDataAsync();
+        }
+        catch (Exception ex)
+        {
+            ConnectionState.Disconnect();
+            error = $"No se pudo conectar: {ex.Message}";
+        }
+    }
+
+    private async Task LoadDataAsync()
+    {
+        isLoading = true;
+        error = null;
+
+        try
+        {
+            items = await Repository.GetAllAsync();
+        }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private void Disconnect()
+    {
+        ConnectionState.Disconnect();
+        items = [];
+        editing = null;
+        error = null;
+    }
+
+    private void NewRecord()
+    {
+        editing = new NSNeedDecorationRecord
+        {
+            ForecastYear = (short)DateTime.UtcNow.Year,
+            ForecastMonth = (byte)DateTime.UtcNow.Month
+        };
+    }
+
+    private void EditRecord(NSNeedDecorationRecord item)
+    {
+        editing = new NSNeedDecorationRecord
+        {
+            NSNeedDecorationID = item.NSNeedDecorationID,
+            ForecastYear = item.ForecastYear,
+            ForecastMonth = item.ForecastMonth,
+            Category = item.Category,
+            Program = item.Program,
+            ProductType = item.ProductType,
+            VendorStream = item.VendorStream,
+            Units = item.Units,
+            SourceFileName = item.SourceFileName,
+            SourceAsOfDate = item.SourceAsOfDate,
+            LoadTimestampUTC = item.LoadTimestampUTC
+        };
+    }
+
+    private void CancelEdit() => editing = null;
+
+    private async Task SaveAsync()
+    {
+        if (editing is null)
+        {
+            return;
+        }
+
+        error = null;
+        try
+        {
+            if (editing.NSNeedDecorationID == 0)
+            {
+                await Repository.InsertAsync(editing);
+            }
+            else
+            {
+                await Repository.UpdateAsync(editing);
+            }
+
+            editing = null;
+            await LoadDataAsync();
+        }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+        }
+    }
+
+    private async Task DeleteRecord(long id)
+    {
+        error = null;
+        try
+        {
+            await Repository.DeleteAsync(id);
+            await LoadDataAsync();
+        }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+        }
+    }
+
+    private sealed class LoginModel
+    {
+        [Required]
+        public string Server { get; set; } = "fanserver.database.windows.net";
+
+        [Required]
+        public string Database { get; set; } = "FanMaster";
+
+        [Required]
+        public string UserName { get; set; } = string.Empty;
+
+        [Required]
+        public string Password { get; set; } = string.Empty;
+    }
+}
